@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const admin = require("firebase-admin");
 const cors = require('cors');
 const app = express()
 const port = 3000;
@@ -9,6 +10,14 @@ app.use(cors());
 app.use(express.json());
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET);
+
+
+const serviceAccount = require("./profast-firebase-secret.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
+
 
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -20,8 +29,12 @@ const client = new MongoClient(process.env.MONGO_URI, {
     }
 });
 
-const parcelCollection = client.db('profastDB').collection('parcelCollection');
-const paymentsCollection = client.db('profastDB').collection('payments');
+const db = client.db('profastDB');
+
+const parcelCollection = db.collection('parcelCollection');
+const paymentsCollection = db.collection('payments');
+const usersCollection = db.collection('users');
+const ridersCollection = db.collection('riders');
 
 
 
@@ -29,6 +42,36 @@ async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
         // await client.connect();
+
+
+        // middlewares
+
+        const verifyFBToken = async (req, res, next) => {
+            const authHeader = req.headers.authorization;
+            if (!authHeader) {
+                return res.status(401).send({ message: 'unauthorized access' })
+            }
+
+            const token = authHeader.split(' ')[1];
+            if (!token) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+
+            try {
+                const decoded = await admin.auth().verifyIdToken(token);
+                req.decoded = decoded;
+                next();
+            }
+            catch (error) {
+                res.status(500).send({ message: 'internal server error' });
+            }
+
+        }
+
+
+
+
+        // parcel apis
 
         app.post('/addParcel', async (req, res) => {
             try {
@@ -40,7 +83,7 @@ async function run() {
             }
         });
 
-        app.get('/parcels', async (req, res) => {
+        app.get('/parcels', verifyFBToken, async (req, res) => {
             try {
                 const { email } = req.query;
                 let filter = {};
@@ -79,7 +122,81 @@ async function run() {
 
 
 
-        app.get('/payments', async (req, res) => {
+        // rider apis
+
+        app.post('/riders', async (req, res) => {
+            try {
+                const riderInfo = req.body;
+                // console.log(riderInfo);
+                const result = await ridersCollection.insertOne(riderInfo);
+                res.status(201).send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'internal server error' });
+            }
+        });
+
+        app.get('/riders/pending', async (req, res) => {
+            try {
+                const riders = await ridersCollection.find({ status: "pending" }).toArray();
+                res.status(200).send(riders);
+            } catch (error) {
+                res.status(500).send({ message: 'failed to find pending riders applications!', error });
+            }
+        });
+
+        app.get('/riders/active', async (req, res) => {
+            const activeRiders = await ridersCollection.find({ status: "active" }).toArray();
+            res.send(activeRiders);
+        })
+
+        app.patch('/riders/:id/status', async (req, res) => {
+            console.log('entered patch');
+            try {
+                const { id } = req.params;
+                const query = { _id: new ObjectId(id) };
+                const { status } = req.body;
+                const updatedDoc = {
+                    $set: {
+                        status
+                    }
+                }
+                console.log(query, status, updatedDoc);
+                const result = await ridersCollection.updateOne(query, updatedDoc)
+                res.send(result)
+            }
+            catch (error) {
+                res.status(500).send({ message: 'internal server error', error });
+            }
+        })
+
+
+
+        // user apis
+
+        app.post('/users', async (req, res) => {
+            try {
+                const userInfo = req.body;
+
+                const filter = { email: userInfo.email };
+
+                const existingUser = await usersCollection.findOne(filter);
+                if (existingUser) return
+
+                const result = await usersCollection.insertOne(userInfo);
+                res.status(201).send(result)
+            }
+            catch (error) {
+                res.status(500).send({ message: 'internal server error' });
+            }
+        })
+
+
+
+
+
+        // payment apis
+
+        app.get('/payments', verifyFBToken, async (req, res) => {
             try {
                 const userEmail = req.query.email;
                 const query = userEmail ? { email: userEmail } : {};
