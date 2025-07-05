@@ -154,13 +154,27 @@ async function run() {
             try {
                 const { id } = req.params;
                 const query = { _id: new ObjectId(id) };
-                const { status } = req.body;
+                const { status, email } = req.body;
+
+                if (status === 'active') {
+                    const userQuery = { email }
+                    const updatedUserDoc = {
+                        $set: {
+                            role: 'rider'
+                        }
+                    }
+                    const updatedResult = await usersCollection.updateOne(userQuery, updatedUserDoc);
+                    if (updatedResult?.modifiedCount) {
+                        res.status(202).send({ message: 'updated user role', updatedResult })
+                    }
+                }
+
                 const updatedDoc = {
                     $set: {
                         status
                     }
                 }
-                console.log(query, status, updatedDoc);
+                // console.log(query, status, updatedDoc);
                 const result = await ridersCollection.updateOne(query, updatedDoc)
                 res.send(result)
             }
@@ -188,6 +202,25 @@ async function run() {
             catch (error) {
                 res.status(500).send({ message: 'internal server error' });
             }
+        });
+
+        app.get('/users/search', async (req, res) => {
+            const emailQuery = req.query.email;
+            if (!emailQuery) {
+                return res.status(400).send({ message: "Missing email query" });
+            }
+
+            const regex = new RegExp(emailQuery, "i"); // case insensitive
+
+            try {
+                const users = await usersCollection.find(
+                    { email: { $regex: regex } }
+                ).limit(10).toArray();
+                res.send(users);
+            } catch (error) {
+                res.status(500).send({ message: "Internal server error" });
+            }
+
         })
 
 
