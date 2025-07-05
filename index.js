@@ -221,6 +221,31 @@ async function run() {
                 res.status(500).send({ message: "Internal server error" });
             }
 
+        });
+
+        app.patch('/user/:id/role', async (req, res) => {
+            try {
+                const { id } = req.params;
+                const {role} = req.body;
+                console.log(id,role);
+
+                if (!["admin", "user"].includes(role)) {
+                    return res.status(400).send({ message: "Invalid role" });
+                }
+
+                const updatedResult = await usersCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    {
+                        $set: {
+                            role
+                        }
+                    }
+                );
+                res.status(202).send(updatedResult);
+            }
+            catch (error) {
+                res.status(500).send({ message: 'internal server error' })
+            }
         })
 
 
