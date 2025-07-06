@@ -223,11 +223,30 @@ async function run() {
 
         });
 
-        app.patch('/user/:id/role', async (req, res) => {
+
+        app.get('/user/:email/role', async (req, res) => {
+            try {
+                const { email } = req.params;
+                if (!email) {
+                    return res.status(400).send({ message: "email not found!" })
+                }
+                const user = await usersCollection.findOne({ email });
+                if (!user) {
+                    return res.status(404).send({ message: "No user found with this email!" })
+                }
+                res.status(200).send({ role: user.role || 'user' });
+            }
+            catch(error){
+                res.status(500).send({message:"internal server error"});
+            }
+        })
+
+
+        app.patch('/user/:id/role', async (req, res) => { 
             try {
                 const { id } = req.params;
-                const {role} = req.body;
-                console.log(id,role);
+                const { role } = req.body;
+                // console.log(id, role);
 
                 if (!["admin", "user"].includes(role)) {
                     return res.status(400).send({ message: "Invalid role" });
