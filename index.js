@@ -66,6 +66,15 @@ async function run() {
                 res.status(500).send({ message: 'internal server error' });
             }
 
+        };
+
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email;
+            const result = await usersCollection.findOne({ email });
+            if (!result || result.role !== 'admin') {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+            next();
         }
 
 
@@ -135,7 +144,7 @@ async function run() {
             }
         });
 
-        app.get('/riders/pending', async (req, res) => {
+        app.get('/riders/pending', verifyFBToken, async (req, res) => {
             try {
                 const riders = await ridersCollection.find({ status: "pending" }).toArray();
                 res.status(200).send(riders);
@@ -144,7 +153,7 @@ async function run() {
             }
         });
 
-        app.get('/riders/active', async (req, res) => {
+        app.get('/riders/active', verifyFBToken, async (req, res) => {
             const activeRiders = await ridersCollection.find({ status: "active" }).toArray();
             res.send(activeRiders);
         })
@@ -204,7 +213,7 @@ async function run() {
             }
         });
 
-        app.get('/users/search', async (req, res) => {
+        app.get('/users/search', verifyFBToken, verifyAdmin, async (req, res) => {
             const emailQuery = req.query.email;
             if (!emailQuery) {
                 return res.status(400).send({ message: "Missing email query" });
@@ -224,7 +233,7 @@ async function run() {
         });
 
 
-        app.get('/user/:email/role', async (req, res) => {
+        app.get('/user/:email/role', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const { email } = req.params;
                 if (!email) {
@@ -236,13 +245,13 @@ async function run() {
                 }
                 res.status(200).send({ role: user.role || 'user' });
             }
-            catch(error){
-                res.status(500).send({message:"internal server error"});
+            catch (error) {
+                res.status(500).send({ message: "internal server error" });
             }
         })
 
 
-        app.patch('/user/:id/role', async (req, res) => { 
+        app.patch('/user/:id/role', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const { id } = req.params;
                 const { role } = req.body;
