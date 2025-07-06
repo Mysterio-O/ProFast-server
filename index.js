@@ -99,10 +99,10 @@ async function run() {
                 if (email) {
                     filter = { created_by: email };
                 }
-                if(payment_status){
+                if (payment_status) {
                     filter.payment_status = payment_status
                 }
-                if(delivery_status){
+                if (delivery_status) {
                     filter.delivery_status = delivery_status
                 }
                 console.log(filter);
@@ -135,6 +135,39 @@ async function run() {
             }
         });
 
+        app.patch('/parcels/:id/assign', async (req, res) => {
+            const { id } = req.params;
+            const { riderId, riderName } = req.body;
+            if (!id) {
+                res.status(400).send({ message: 'parcel id not found' });
+            };
+            try {
+                const updateParcel = {
+                    $set: {
+                        delivery_status: 'In transit',
+                        assigned_rider_id: riderId,
+                        assigned_rider_name: riderName,
+                    }
+                }
+                await parcelCollection.updateOne({ _id: new ObjectId(id) }, updateParcel);
+
+                const updateRider = {
+                    $set: {
+                        work_status: 'In delivery'
+                    }
+                }
+                await ridersCollection.updateOne({ _id: new ObjectId(riderId) }, updateRider);
+                if (!updateParcel || !updateRider) {
+                    return res.status(400).send({ message: 'failed to update the parcel' })
+                }
+                res.status(202).send({ message: 'parcel update successful', success: true });
+
+            }
+            catch (error) {
+                res.status(500).send({ message: 'error updating assign rider', error });
+            }
+        })
+
 
 
 
@@ -150,6 +183,25 @@ async function run() {
                 res.status(500).send({ message: 'internal server error' });
             }
         });
+
+        app.get('/riders/available', async (req, res) => {
+            console.log('entered available riders api');
+            try {
+                const { district } = req.query
+                // console.log('request query',req.query);
+                if (!district) {
+                    return res.status(400).send({ message: "empty district name" });
+                }
+                const riders = await ridersCollection.find({ district }).toArray();
+                if (!riders) {
+                    return res.status(404).send({ message: "no riders found that area" });
+                }
+                res.status(200).send(riders);
+            }
+            catch (error) {
+                res.status(500).send({ message: "error fetching available riders data on the server" });
+            }
+        })
 
         app.get('/riders/pending', verifyFBToken, async (req, res) => {
             try {
@@ -240,7 +292,7 @@ async function run() {
         });
 
 
-        app.get('/user/:email/role', verifyFBToken, verifyAdmin, async (req, res) => {
+        app.get('/user/:email/role', verifyFBToken,async (req, res) => {
             try {
                 const { email } = req.params;
                 if (!email) {
